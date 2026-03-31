@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__PAGE_TITLE__</title>
+  <style>
+    :root {
+      --bg: #090b13;
+      --ink: #ede7dc;
+      --muted: rgba(237, 231, 220, 0.48);
+      --panel: rgba(13, 15, 24, 0.72);
+      --border: rgba(255,255,255,0.08);
+      --shadow: 0 18px 56px rgba(0,0,0,0.42);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; }
+
+    body {
+      overflow: hidden;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 18%, rgba(246, 165, 122, 0.08), transparent 24%),
+        radial-gradient(circle at 82% 14%, rgba(112, 144, 245, 0.10), transparent 28%),
+        radial-gradient(circle at 52% 100%, rgba(127, 212, 175, 0.08), transparent 26%),
+        #090b13;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Songti SC", "STSong", serif;
+    }
+
+    #canvas-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+
+    .viewer { position: relative; width: 100vw; height: 100vh; }
+    svg { position: relative; z-index: 1; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    .viewer.is-panning svg { cursor: grabbing; }
+
+    .title-bar {
+      position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 10; text-align: center; pointer-events: none;
+      text-shadow: 0 0 38px rgba(120, 126, 220, 0.18);
+    }
+    .title-bar h1 {
+      font-family: "Kaiti SC", "STKaiti", "Songti SC", serif;
+      font-size: 24px; letter-spacing: 0.36em; color: rgba(255,255,255,0.82); padding-left: 0.36em;
+    }
+    .title-bar p { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.34); letter-spacing: 0.06em; }
+
+    .stats {
+      position: fixed; top: 20px; right: 20px; z-index: 10;
+      text-align: right; font-size: 11px; line-height: 1.8; color: rgba(255,255,255,0.34); pointer-events: none;
+    }
+
+    .legend {
+      position: fixed; left: 20px; bottom: 20px; z-index: 12;
+      display: flex; flex-wrap: wrap; gap: 8px; max-width: min(92vw, 1080px);
+    }
+    .legend-item {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border-radius: 999px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(16px); color: rgba(255,255,255,0.68);
+      font-size: 12px; line-height: 1; cursor: pointer; user-select: none;
+      transition: opacity 0.22s ease, background 0.22s ease, color 0.22s ease, border-color 0.22s ease;
+    }
+    .legend-item:hover { color: rgba(255,255,255,0.96); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); }
+    .legend-item.dimmed { opacity: 0.3; }
+    .legend-item.active { color: rgba(255,255,255,0.98); border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.10); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
+
+    .tooltip {
+      position: fixed; z-index: 100; width: min(360px, calc(100vw - 32px));
+      padding: 14px 16px; border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12); background: rgba(17, 19, 30, 0.94);
+      box-shadow: var(--shadow); backdrop-filter: blur(18px);
+      pointer-events: none; opacity: 0; transform: translateY(6px);
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+    .tooltip.visible { opacity: 1; transform: translateY(0); }
+    .tooltip h2 { font-size: 16px; line-height: 1.4; margin-bottom: 6px; }
+    .tooltip .info { margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.42); }
+    .tooltip .content { max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+    .tooltip .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .tooltip .tag {
+      display: inline-flex; align-items: center; padding: 2px 8px;
+      border-radius: 999px; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.66); font-size: 10px;
+    }
+
+    @media (max-width: 900px) {
+      .title-bar h1 { font-size: 19px; letter-spacing: 0.24em; padding-left: 0.24em; }
+      .legend { left: 12px; right: 12px; bottom: 12px; }
+      .stats { top: 68px; right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas-bg"></canvas>
+  <div class="title-bar">
+    <h1 id="title-text"></h1>
+    <p id="subtitle-text"></p>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="viewer" id="viewer">
+    <svg id="graph"></svg>
+  </div>
+  <div class="tooltip" id="tooltip">
+    <h2>悬停节点看内容</h2>
+    <div class="info">滚轮缩放 · 拖动画布平移 · 拖节点整理位置</div>
+    <div class="content"></div>
+  </div>
+  <div class="legend" id="legend"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <script>
+    const rawData = __GRAPH_DATA__;
+
+    // ─── Parse & enrich nodes ───
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Count how many seeds recommend each node (for sizing bridge nodes)
+    const seedRecommendCount = {};
+    (rawData.links || []).forEach(edge => {
+      if (edge.kind === "recommendation") {
+        seedRecommendCount[edge.target] = (seedRecommendCount[edge.target] || 0) + 1;
+      }
+    });
+
+    const nodes = (rawData.nodes || []).map((node, i) => {
+      const isSeed = node.type === "seed";
+      const bridgeCount = seedRecommendCount[node.id] || 0;
+      // Auto-calculate size: seeds are large, bridge nodes medium, leaves small
+      let size;
+      if (isSeed) {
+        size = 8;
+      } else if (bridgeCount >= 3) {
+        size = 6;
+      } else if (bridgeCount >= 2) {
+        size = 5;
+      } else {
+        size = 3.5;
+      }
+      // Safe ID for SVG gradient references
+      const safeGlowId = "glow-" + i;
+      return { ...node, size, safeGlowId, bridgeCount };
+    });
+
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // ─── Parse clusters ───
+    const sourceClusters = rawData.clusters || [];
+    const clusterCountMap = {};
+    nodes.forEach(n => { clusterCountMap[n.cluster] = (clusterCountMap[n.cluster] || 0) + 1; });
+    const clusters = sourceClusters.map(c => ({
+      ...c,
+      count: clusterCountMap[c.id] || 0
+    })).filter(c => c.count > 0);
+
+    // Assign color from cluster to node if not already set
+    const clusterColorMap = {};
+    clusters.forEach(c => { clusterColorMap[c.id] = c.color; });
+    nodes.forEach(n => {
+      if (!n.color) n.color = clusterColorMap[n.cluster] || "#888";
+    });
+
+    // ─── Parse links ───
+    const links = [];
+    (rawData.links || []).forEach(edge => {
+      if (nodeMap.has(edge.source) && nodeMap.has(edge.target) && edge.source !== edge.target) {
+        links.push({ ...edge, weight: edge.weight || (edge.kind === "recommendation" ? 1 : 0.4) });
+      }
+    });
+
+    // ─── Meta ───
+    const meta = rawData.meta || {};
+    document.getElementById("title-text").textContent = meta.title || "笔 记 星 图";
+    document.getElementById("subtitle-text").textContent = meta.subtitle || "";
+    document.getElementById("stats").innerHTML =
+      `节点 ${nodes.length}<br>连线 ${links.length}<br>聚类 ${clusters.length}`;
+
+    // ─── Background stars ───
+    const canvas = document.getElementById("canvas-bg");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    for (let i = 0; i < 200; i++) {
+      ctx.beginPath();
+      ctx.arc(Math.random() * width, Math.random() * height, Math.random() * 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200,200,240,${Math.random() * 0.35 + 0.08})`;
+      ctx.fill();
+    }
+
+    // ─── SVG setup ───
+    const viewer = document.getElementById("viewer");
+    const tooltip = document.getElementById("tooltip");
+    const legend = document.getElementById("legend");
+    const svg = d3.select("#graph").attr("width", width).attr("height", height);
+    const viewport = svg.append("g");
+
+    // Glow gradients
+    const defs = svg.append("defs");
+    nodes.forEach(node => {
+      const gradient = defs.append("radialGradient")
+        .attr("id", node.safeGlowId)
+        .attr("cx", "50%").attr("cy", "50%").attr("r", "50%");
+      gradient.append("stop")
+        .attr("offset", "0%")
+        .attr("stop-color", node.color)
+        .attr("stop-opacity", node.type === "seed" ? 0.50 : 0.32);
+      gradient.append("stop")
+        .attr("offset", "100%")
+        .attr("stop-color", node.color)
+        .attr("stop-opacity", 0);
+    });
+
+    // Adjacency map
+    const adjacency = new Map(nodes.map(n => [n.id, new Set()]));
+    links.forEach(edge => {
+      adjacency.get(edge.source)?.add(edge.target);
+      adjacency.get(edge.target)?.add(edge.source);
+    });
+
+    // ─── Links layer ───
+    const linkLayer = viewport.append("g").attr("stroke-linecap", "round");
+    const link = linkLayer.selectAll("line")
+      .data(links).join("line")
+      .attr("stroke", e => e.kind === "recommendation" ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.03)")
+      .attr("stroke-width", e => e.kind === "recommendation" ? 0.8 : 0.4);
+
+    // ─── Nodes layer ───
+    const nodeLayer = viewport.append("g");
+    const node = nodeLayer.selectAll("g")
+      .data(nodes).join("g")
+      .attr("class", d => `node node-${d.type}`)
+      .style("cursor", "pointer");
+
+    // Halo
+    node.append("circle")
+      .attr("class", "halo")
+      .attr("r", d => d.type === "seed" ? d.size * 3.2 : d.size * 2.4)
+      .attr("fill", d => `url(#${d.safeGlowId})`)
+      .attr("opacity", d => d.type === "seed" ? 0.46 : 0.24);
+
+    // Core
+    node.append("circle")
+      .attr("class", "core")
+      .attr("r", d => d.size)
+      .attr("fill", d => d.color)
+      .attr("fill-opacity", d => d.type === "seed" ? 0.94 : 0.84)
+      .attr("stroke", d => d.type === "seed" ? "rgba(255,255,255,0.55)" : "none")
+      .attr("stroke-width", d => d.type === "seed" ? 1.4 : 0);
+
+    // Seed text labels
+    node.filter(d => d.type === "seed")
+      .append("text")
+      .text(d => {
+        const t = d.label || d.content || "";
+        return t.length > 10 ? t.slice(0, 10) + "…" : t;
+      })
+      .attr("x", d => d.size + 5)
+      .attr("y", 3.5)
+      .attr("font-size", "10px")
+      .attr("fill", d => d.color)
+      .attr("opacity", 0.7)
+      .attr("font-family", '"Songti SC", "STSong", serif')
+      .attr("pointer-events", "none");
+
+    // ─── Force simulation ───
+    // Cluster centroid force
+    function forceCluster(strength) {
+      let _nodes;
+      function force(alpha) {
+        const centroids = {};
+        const counts = {};
+        _nodes.forEach(n => {
+          if (!centroids[n.cluster]) { centroids[n.cluster] = { x: 0, y: 0 }; counts[n.cluster] = 0; }
+          centroids[n.cluster].x += n.x;
+          centroids[n.cluster].y += n.y;
+          counts[n.cluster]++;
+        });
+        Object.keys(centroids).forEach(k => {
+          centroids[k].x /= counts[k];
+          centroids[k].y /= counts[k];
+        });
+        _nodes.forEach(n => {
+          const c = centroids[n.cluster];
+          if (c) {
+            n.vx += (c.x - n.x) * alpha * strength * 0.06;
+            n.vy += (c.y - n.y) * alpha * strength * 0.06;
+          }
+        });
+      }
+      force.initialize = function(n) { _nodes = n; };
+      return force;
+    }
+
+    const simulation = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links).id(d => d.id)
+        .distance(e => e.kind === "recommendation" ? 50 : 80)
+        .strength(e => e.kind === "recommendation" ? 0.2 : 0.06))
+      .force("charge", d3.forceManyBody().strength(d => d.type === "seed" ? -160 : -80))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collide", d3.forceCollide().radius(d => d.size + (d.type === "seed" ? 10 : 5)).iterations(2))
+      .force("cluster", forceCluster(0.35));
+
+    simulation.on("tick", () => {
+      link
+        .attr("x1", e => e.source.x).attr("y1", e => e.source.y)
+        .attr("x2", e => e.target.x).attr("y2", e => e.target.y);
+      node.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+    // ─── Zoom ───
+    svg.call(
+      d3.zoom().scaleExtent([0.3, 5])
+        .on("start", () => viewer.classList.add("is-panning"))
+        .on("end", () => viewer.classList.remove("is-panning"))
+        .on("zoom", e => viewport.attr("transform", e.transform))
+    ).on("dblclick.zoom", null);
+
+    // ─── Tooltip ───
+    function tooltipHtml(d) {
+      const tags = d.tags?.length
+        ? `<div class="tags">${d.tags.map(t => `<span class="tag">#${t}</span>`).join("")}</div>`
+        : "";
+      const info = [
+        d.type === "seed" ? "每日回顾" : "相关推荐",
+        d.cluster_label,
+        d.created_at
+      ].filter(Boolean).join(" · ");
+      return `<h2 style="color:${d.color}">${d.label || d.content}</h2>
+        <div class="info">${info}</div>${tags}
+        <div class="content">${d.content || d.label}</div>`;
+    }
+
+    function moveTooltip(e) {
+      const gap = 18;
+      const bw = tooltip.offsetWidth || 320;
+      const bh = tooltip.offsetHeight || 220;
+      let left = e.clientX + gap;
+      let top = e.clientY + gap;
+      if (left + bw > window.innerWidth - 12) left = e.clientX - bw - gap;
+      if (top + bh > window.innerHeight - 12) top = e.clientY - bh - gap;
+      tooltip.style.left = Math.max(12, left) + "px";
+      tooltip.style.top = Math.max(12, top) + "px";
+    }
+
+    // ─── Interaction state ───
+    let activeClusterId = "all";
+    let hoveredNodeId = null;
+
+    function edgeNodeId(v) { return typeof v === "object" ? v.id : v; }
+    function inActiveCluster(nid) { return activeClusterId === "all" || nodeMap.get(nid)?.cluster === activeClusterId; }
+    function isNeighbor(a, b) { return adjacency.get(a)?.has(b) || false; }
+
+    function refreshStyles() {
+      node.each(function(d) {
+        const el = d3.select(this);
+        const byCluster = inActiveCluster(d.id);
+        const isHov = hoveredNodeId === d.id;
+        const relHov = hoveredNodeId ? isNeighbor(hoveredNodeId, d.id) : false;
+        const keep = hoveredNodeId ? (isHov || relHov) : byCluster;
+        el.select(".halo").attr("opacity", keep ? (d.type === "seed" ? 0.52 : 0.26) : 0.04);
+        el.select(".core")
+          .attr("fill-opacity", keep ? (d.type === "seed" ? 0.96 : 0.86) : 0.12)
+          .attr("stroke-opacity", keep ? 1 : 0.12);
+        const labelOpacity = hoveredNodeId === d.id ? 0.88 : 0;
+        el.selectAll("text").attr("opacity", labelOpacity);
+        el.attr("opacity", keep ? 1 : 0.18);
+      });
+
+      link.attr("stroke", e => {
+        const sid = edgeNodeId(e.source), tid = edgeNodeId(e.target);
+        const vis = inActiveCluster(sid) && inActiveCluster(tid);
+        const rel = hoveredNodeId && (sid === hoveredNodeId || tid === hoveredNodeId);
+        if (rel) return e.kind === "recommendation" ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.16)";
+        if (!vis) return "rgba(255,255,255,0.012)";
+        return e.kind === "recommendation" ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.03)";
+      }).attr("stroke-width", e => {
+        const sid = edgeNodeId(e.source), tid = edgeNodeId(e.target);
+        const rel = hoveredNodeId && (sid === hoveredNodeId || tid === hoveredNodeId);
+        return rel ? (e.kind === "recommendation" ? 1.5 : 0.8) : (e.kind === "recommendation" ? 0.8 : 0.4);
+      });
+
+      legend.querySelectorAll(".legend-item[data-cluster]").forEach(el => {
+        const cid = el.dataset.cluster;
+        const active = activeClusterId === "all" || activeClusterId === cid;
+        el.classList.toggle("active", activeClusterId === cid);
+        el.classList.toggle("dimmed", !active);
+      });
+      const allBtn = legend.querySelector("[data-cluster='all']");
+      if (allBtn) {
+        allBtn.classList.toggle("active", activeClusterId === "all");
+        allBtn.classList.toggle("dimmed", activeClusterId !== "all");
+      }
+    }
+
+    // ─── Node events ───
+    node
+      .on("mouseenter", (e, d) => {
+        hoveredNodeId = d.id;
+        tooltip.innerHTML = tooltipHtml(d);
+        tooltip.classList.add("visible");
+        moveTooltip(e);
+        refreshStyles();
+      })
+      .on("mousemove", e => moveTooltip(e))
+      .on("mouseleave", () => {
+        hoveredNodeId = null;
+        tooltip.classList.remove("visible");
+        refreshStyles();
+      });
+
+    // ─── Drag (release after drag, don't pin) ───
+    node.call(
+      d3.drag()
+        .on("start", (e, d) => {
+          e.sourceEvent.stopPropagation();
+          if (!e.active) simulation.alphaTarget(0.24).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on("end", (e, d) => {
+          if (!e.active) simulation.alphaTarget(0);
+          d.fx = null; d.fy = null;
+        })
+    );
+
+    // ─── Legend ───
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "legend-item active";
+    allButton.dataset.cluster = "all";
+    allButton.innerHTML = `<span class="legend-dot" style="background:rgba(255,255,255,0.72)"></span><span>全部 · ${nodes.length}</span>`;
+    allButton.addEventListener("click", () => { activeClusterId = "all"; refreshStyles(); });
+    legend.appendChild(allButton);
+
+    clusters.forEach(c => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "legend-item";
+      btn.dataset.cluster = c.id;
+      btn.innerHTML = `<span class="legend-dot" style="background:${c.color}"></span><span>${c.label} · ${c.count}</span>`;
+      btn.addEventListener("click", () => {
+        activeClusterId = activeClusterId === c.id ? "all" : c.id;
+        refreshStyles();
+      });
+      legend.appendChild(btn);
+    });
+
+    refreshStyles();
+  </script>
+</body>
+</html>
