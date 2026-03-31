@@ -76,8 +76,13 @@
       transition: opacity 0.22s ease, transform 0.22s ease;
     }
     .tooltip.visible { opacity: 1; transform: translateY(0); }
+    .tooltip.is-pinned { pointer-events: auto; }
     .tooltip .info { margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.42); }
-    .tooltip .content { max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+    .tooltip .content {
+      max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.65; white-space: pre-wrap;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .tooltip .content::-webkit-scrollbar { width: 0; height: 0; }
     .tooltip .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
     .tooltip .tag {
       display: inline-flex; align-items: center; padding: 2px 8px;
@@ -295,7 +300,10 @@
     // ─── Zoom ───
     svg.call(
       d3.zoom().scaleExtent([0.3, 5])
-        .on("start", () => viewer.classList.add("is-panning"))
+        .on("start", () => {
+          viewer.classList.add("is-panning");
+          if (pinnedNodeId) closeTooltip();
+        })
         .on("end", () => viewer.classList.remove("is-panning"))
         .on("zoom", e => viewport.attr("transform", e.transform))
     ).on("dblclick.zoom", null);
@@ -339,18 +347,38 @@
     // ─── Interaction state ───
     let activeClusterId = "all";
     let hoveredNodeId = null;
+    let pinnedNodeId = null;
 
     function edgeNodeId(v) { return typeof v === "object" ? v.id : v; }
     function inActiveCluster(nid) { return activeClusterId === "all" || nodeMap.get(nid)?.cluster === activeClusterId; }
     function isNeighbor(a, b) { return adjacency.get(a)?.has(b) || false; }
+    function focusedNodeId() { return pinnedNodeId || hoveredNodeId; }
+
+    function openTooltip(d, e, { pinned = false } = {}) {
+      hoveredNodeId = d.id;
+      pinnedNodeId = pinned ? d.id : pinnedNodeId;
+      tooltip.innerHTML = tooltipHtml(d);
+      tooltip.classList.add("visible");
+      tooltip.classList.toggle("is-pinned", pinnedNodeId !== null);
+      moveTooltip(e);
+      refreshStyles();
+    }
+
+    function closeTooltip() {
+      hoveredNodeId = null;
+      pinnedNodeId = null;
+      tooltip.classList.remove("visible", "is-pinned");
+      refreshStyles();
+    }
 
     function refreshStyles() {
+      const focusId = focusedNodeId();
       node.each(function(d) {
         const el = d3.select(this);
         const byCluster = inActiveCluster(d.id);
-        const isHov = hoveredNodeId === d.id;
-        const relHov = hoveredNodeId ? isNeighbor(hoveredNodeId, d.id) : false;
-        const keep = hoveredNodeId ? (isHov || relHov) : byCluster;
+        const isHov = focusId === d.id;
+        const relHov = focusId ? isNeighbor(focusId, d.id) : false;
+        const keep = focusId ? (isHov || relHov) : byCluster;
         el.select(".halo").attr("opacity", keep ? (d.type === "seed" ? 0.52 : 0.26) : 0.04);
         el.select(".core")
           .attr("fill-opacity", keep ? (d.type === "seed" ? 0.96 : 0.86) : 0.12)
@@ -361,13 +389,13 @@
       link.attr("stroke", e => {
         const sid = edgeNodeId(e.source), tid = edgeNodeId(e.target);
         const vis = inActiveCluster(sid) && inActiveCluster(tid);
-        const rel = hoveredNodeId && (sid === hoveredNodeId || tid === hoveredNodeId);
+        const rel = focusId && (sid === focusId || tid === focusId);
         if (rel) return e.kind === "recommendation" ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.16)";
         if (!vis) return "rgba(255,255,255,0.012)";
         return e.kind === "recommendation" ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.03)";
       }).attr("stroke-width", e => {
         const sid = edgeNodeId(e.source), tid = edgeNodeId(e.target);
-        const rel = hoveredNodeId && (sid === hoveredNodeId || tid === hoveredNodeId);
+        const rel = focusId && (sid === focusId || tid === focusId);
         return rel ? (e.kind === "recommendation" ? 1.5 : 0.8) : (e.kind === "recommendation" ? 0.8 : 0.4);
       });
 
@@ -387,24 +415,45 @@
     // ─── Node events ───
     node
       .on("mouseenter", (e, d) => {
-        hoveredNodeId = d.id;
-        tooltip.innerHTML = tooltipHtml(d);
-        tooltip.classList.add("visible");
-        moveTooltip(e);
-        refreshStyles();
+        if (pinnedNodeId) return;
+        openTooltip(d, e);
       })
-      .on("mousemove", e => moveTooltip(e))
+      .on("mousemove", e => {
+        if (pinnedNodeId) return;
+        moveTooltip(e);
+      })
       .on("mouseleave", () => {
+        if (pinnedNodeId) return;
         hoveredNodeId = null;
         tooltip.classList.remove("visible");
         refreshStyles();
+      })
+      .on("click", (e, d) => {
+        if (e.defaultPrevented) return;
+        e.stopPropagation();
+        if (pinnedNodeId === d.id) {
+          closeTooltip();
+          return;
+        }
+        pinnedNodeId = null;
+        openTooltip(d, e, { pinned: true });
       });
+
+    svg.on("click.dismissTooltip", () => {
+      if (!pinnedNodeId) return;
+      closeTooltip();
+    });
+
+    window.addEventListener("keydown", e => {
+      if (e.key === "Escape" && pinnedNodeId) closeTooltip();
+    });
 
     // ─── Drag (release after drag, don't pin) ───
     node.call(
       d3.drag()
         .on("start", (e, d) => {
           e.sourceEvent.stopPropagation();
+          if (pinnedNodeId) closeTooltip();
           if (!e.active) simulation.alphaTarget(0.24).restart();
           d.fx = d.x; d.fy = d.y;
         })
