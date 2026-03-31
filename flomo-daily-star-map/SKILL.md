@@ -20,7 +20,8 @@ description: >
 
 通过 flomo MCP 获取原始数据：
 
-- 调用 `memo_search`（不带关键词，`limit=20`）获取最近 20 条笔记，作为 **seed**
+- 优先调用 `get_daily_review` 获取今日每日回顾推荐的 20 条笔记全文，作为 **seed**
+- 如果当前运行环境没有暴露 `get_daily_review`，再回退到 `memo_search`（不带关键词，`limit=20`）获取最近 20 条笔记，作为 **seed**
 - 对每条 seed 调用 `memo_recommended(id, limit=10)`，获取相关笔记
 - 合并、按 id 去重
 
@@ -68,13 +69,20 @@ description: >
 
 附一句简短说明：节点数、连线数、聚类数，以及你觉得值得提一句的发现。不需要长篇大论。
 
+`meta.subtitle` 使用固定格式：
+
+- `YYYY-MM-DD · 一句简短的话`
+- 日期使用本次生成对应的日期
+- 后半句少于 15 个字
+- 不要写成长句，不要塞过多上下文
+
 ## 数据结构
 
 ```json
 {
   "meta": {
     "title": "笔 记 星 图",
-    "subtitle": "flomo · 每日回顾 · 语义星图",
+    "subtitle": "2026-03-31 · 今日思绪群星",
     "page_title": "flomo 每日星图",
     "generated_at": "2026-03-31T22:00:00"
   },
