@@ -306,7 +306,7 @@
       const cleanedContent = tags.reduce((text, tag) => {
         const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         return text.replace(new RegExp(`(^|\\s)#${escapedTag}(?=\\s|$)`, "g"), "$1");
-      }, d.content || d.label || "")
+      }, d.content || "")
         .split("\n")
         .map(line => line.trim())
         .join("\n")

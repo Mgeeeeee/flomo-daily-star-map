@@ -91,7 +91,6 @@ description: >
       "type": "seed",
       "cluster": "c1",
       "cluster_label": "深夜随想",
-      "label": "今天突然想到一个问题…",
       "content": "今天突然想到一个问题，为什么越忙越不想动？\n\n#随想",
       "tags": ["随想"],
       "created_at": "2026-03-26"
@@ -111,7 +110,6 @@ description: >
 
 - `id`：使用 flomo 返回的原始 memo id
 - `type`：`"seed"` 或 `"recommended"`
-- `label`：你为这条笔记写的简短标签（通常是内容前 15–20 字），会显示在 seed 节点旁
 - `content`：笔记完整正文，显示在悬浮提示中
 - `kind`：`"recommendation"` 或 `"semantic"`
 - 不需要填 `size`、`color` 等字段，模板会自动根据 type、cluster、被推荐次数计算
