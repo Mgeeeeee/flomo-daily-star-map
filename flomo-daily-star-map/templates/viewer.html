@@ -302,20 +302,25 @@
 
     // ─── Tooltip ───
     function tooltipHtml(d) {
-      const cleanedContent = (d.content || d.label || "")
+      const tags = d.tags || [];
+      const cleanedContent = tags.reduce((text, tag) => {
+        const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return text.replace(new RegExp(`(^|\\s)#${escapedTag}(?=\\s|$)`, "g"), "$1");
+      }, d.content || d.label || "")
         .split("\n")
-        .filter(line => !/^\s*#\S+\s*$/.test(line.trim()))
+        .map(line => line.trim())
         .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
         .trim();
-      const tags = d.tags?.length
-        ? `<div class="tags">${d.tags.map(t => `<span class="tag">#${t}</span>`).join("")}</div>`
+      const tagPills = tags.length
+        ? `<div class="tags">${tags.map(tag => `<span class="tag">#${tag}</span>`).join("")}</div>`
         : "";
       const info = [
         d.type === "seed" ? "每日回顾" : "相关推荐",
         d.cluster_label,
         d.created_at
       ].filter(Boolean).join(" · ");
-      return `<div class="info">${info}</div>${tags}
+      return `<div class="info">${info}</div>${tagPills}
         <div class="content">${cleanedContent}</div>`;
     }
 
