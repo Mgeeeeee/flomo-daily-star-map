@@ -76,7 +76,6 @@
       transition: opacity 0.22s ease, transform 0.22s ease;
     }
     .tooltip.visible { opacity: 1; transform: translateY(0); }
-    .tooltip h2 { font-size: 16px; line-height: 1.4; margin-bottom: 6px; }
     .tooltip .info { margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.42); }
     .tooltip .content { max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
     .tooltip .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
@@ -103,7 +102,6 @@
     <svg id="graph"></svg>
   </div>
   <div class="tooltip" id="tooltip">
-    <h2>悬停节点看内容</h2>
     <div class="info">滚轮缩放 · 拖动画布平移 · 拖节点整理位置</div>
     <div class="content"></div>
   </div>
@@ -249,21 +247,6 @@
       .attr("stroke", d => d.type === "seed" ? "rgba(255,255,255,0.55)" : "none")
       .attr("stroke-width", d => d.type === "seed" ? 1.4 : 0);
 
-    // Seed text labels
-    node.filter(d => d.type === "seed")
-      .append("text")
-      .text(d => {
-        const t = d.label || d.content || "";
-        return t.length > 10 ? t.slice(0, 10) + "…" : t;
-      })
-      .attr("x", d => d.size + 5)
-      .attr("y", 3.5)
-      .attr("font-size", "10px")
-      .attr("fill", d => d.color)
-      .attr("opacity", 0.7)
-      .attr("font-family", '"Songti SC", "STSong", serif')
-      .attr("pointer-events", "none");
-
     // ─── Force simulation ───
     // Cluster centroid force
     function forceCluster(strength) {
@@ -319,6 +302,11 @@
 
     // ─── Tooltip ───
     function tooltipHtml(d) {
+      const cleanedContent = (d.content || d.label || "")
+        .split("\n")
+        .filter(line => !/^\s*#\S+\s*$/.test(line.trim()))
+        .join("\n")
+        .trim();
       const tags = d.tags?.length
         ? `<div class="tags">${d.tags.map(t => `<span class="tag">#${t}</span>`).join("")}</div>`
         : "";
@@ -327,9 +315,8 @@
         d.cluster_label,
         d.created_at
       ].filter(Boolean).join(" · ");
-      return `<h2 style="color:${d.color}">${d.label || d.content}</h2>
-        <div class="info">${info}</div>${tags}
-        <div class="content">${d.content || d.label}</div>`;
+      return `<div class="info">${info}</div>${tags}
+        <div class="content">${cleanedContent}</div>`;
     }
 
     function moveTooltip(e) {
@@ -363,8 +350,6 @@
         el.select(".core")
           .attr("fill-opacity", keep ? (d.type === "seed" ? 0.96 : 0.86) : 0.12)
           .attr("stroke-opacity", keep ? 1 : 0.12);
-        const labelOpacity = hoveredNodeId === d.id ? 0.88 : 0;
-        el.selectAll("text").attr("opacity", labelOpacity);
         el.attr("opacity", keep ? 1 : 0.18);
       });
 
